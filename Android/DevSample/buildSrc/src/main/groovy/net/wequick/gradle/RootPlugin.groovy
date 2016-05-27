@@ -1,6 +1,7 @@
 package net.wequick.gradle
 
 import net.wequick.gradle.aapt.SymbolParser
+import net.wequick.gradle.util.DependenciesUtils
 import org.gradle.api.Project
 import org.gradle.api.tasks.Delete
 
@@ -112,12 +113,11 @@ class RootPlugin extends BasePlugin {
             }
         }
         //  - copy dependencies jars
-        lib.tasks.findAll {
-            it.hasProperty('explodedDir')
-        }.each {
+        ext.explodeAarDirs.each {
             // explodedDir: **/exploded-aar/$group/$artifact/$version
-            File version = it.explodedDir
-            File jarFile = new File(version, 'jars/classes.jar')
+            File version = it
+            File jarDir = new File(version, 'jars')
+            File jarFile = new File(jarDir, 'classes.jar')
             if (!jarFile.exists()) return
 
             File artifact = version.parentFile
@@ -130,6 +130,21 @@ class RootPlugin extends BasePlugin {
                 from jarFile
                 into preJarDir
                 rename {destFile.name}
+            }
+
+            // Check if exists `jars/libs/*.jar' and copy
+            File libDir = new File(jarDir, 'libs')
+            libDir.listFiles().each { jar ->
+                if (!jar.name.endsWith('.jar')) return
+
+                destFile = new File(preJarDir, "${group.name}-${artifact.name}-${jar.name}")
+                if (destFile.exists()) return
+
+                project.copy {
+                    from jar
+                    into preJarDir
+                    rename {destFile.name}
+                }
             }
         }
 
@@ -182,6 +197,66 @@ class RootPlugin extends BasePlugin {
             }
             publicIdsPw.flush()
             publicIdsPw.close()
+        }
+
+        // Backup dependencies
+        if (!small.preLinkAarDir.exists()) small.preLinkAarDir.mkdirs()
+        if (!small.preLinkJarDir.exists()) small.preLinkJarDir.mkdirs()
+        def linkFileName = "$libName-D.txt"
+        File aarLinkFile = new File(small.preLinkAarDir, linkFileName)
+        File jarLinkFile = new File(small.preLinkJarDir, linkFileName)
+
+        def allDependencies = DependenciesUtils.getAllDependencies(lib, 'compile')
+        if (allDependencies.size() > 0) {
+            def aarKeys = []
+            if (!aarLinkFile.exists()) {
+                aarLinkFile.createNewFile()
+            } else {
+                aarLinkFile.eachLine {
+                    aarKeys.add(it)
+                }
+            }
+
+            def jarKeys = []
+            if (!jarLinkFile.exists()) {
+                jarLinkFile.createNewFile()
+            } else {
+                jarLinkFile.eachLine {
+                    jarKeys.add(it)
+                }
+            }
+
+            def aarPw = new PrintWriter(aarLinkFile.newWriter(true))
+            def jarPw = new PrintWriter(jarLinkFile.newWriter(true))
+
+            allDependencies.each { d ->
+                def isAar = true
+                d.moduleArtifacts.each { art ->
+                    // Copy deep level jar dependencies
+                    File src = art.file
+                    if (art.type == 'jar') {
+                        isAar = false
+                        project.copy {
+                            from src
+                            into preJarDir
+                            rename { "${d.moduleGroup}-${src.name}" }
+                        }
+                    }
+                }
+                if (isAar) {
+                    if (!aarKeys.contains(d.name)) {
+                        aarPw.println d.name
+                    }
+                } else {
+                    if (!jarKeys.contains(d.name)) {
+                        jarPw.println d.name
+                    }
+                }
+            }
+            jarPw.flush()
+            jarPw.close()
+            aarPw.flush()
+            aarPw.close()
         }
     }
 

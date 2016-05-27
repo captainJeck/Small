@@ -27,6 +27,7 @@ import org.gradle.logging.StyledTextOutputFactory
 public abstract class BasePlugin implements Plugin<Project> {
 
     public static final String SMALL_AAR_PREFIX = "net.wequick.small:small:"
+    public static final String SMALL_JAR_PATTERN = "net.wequick.small-small-*.jar"
     public static final String SMALL_LIBS = 'smallLibs'
 
     protected boolean isBuildingBundle
@@ -125,6 +126,10 @@ public abstract class BasePlugin implements Plugin<Project> {
             out.style(Style.Normal).format('\t%-64s', text)
             out.withStyle(Style.Identifier).text('[  OK  ]')
             out.println()
+        }
+
+        public static void warn(String text) {
+            out.style(Style.UserInput).format('\t%s', text).println()
         }
 
         public static void footer(String text) {
